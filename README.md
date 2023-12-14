@@ -1,3 +1,4 @@
+![repo-tree Logo](images/logo.png)
 # repo-tree
 
 ## Description
