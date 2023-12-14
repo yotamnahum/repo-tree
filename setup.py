@@ -20,7 +20,7 @@ setup(
     install_requires=open('requirements.txt').read().splitlines(),
     entry_points={
         'console_scripts': [
-            'repo-tree=repo_tree.repository_tree:main',  # Assuming main() is your entry function
+            'repo_tree=repo_tree.repository_tree:main',  # Assuming main() is your entry function
         ],
     },
 )
