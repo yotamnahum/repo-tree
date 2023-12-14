@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 
 setup(
-    name='repo_tree',
+    name='repo-tree',
     version='0.1.0',
     author='Yotam Nahum',
     author_email='yotam@samplead.co',
@@ -20,7 +20,7 @@ setup(
     install_requires=open('requirements.txt').read().splitlines(),
     entry_points={
         'console_scripts': [
-            'repo_tree=repo_tree.repository_tree:main',  # Assuming main() is your entry function
+            'repo-tree=repo_tree.repository_tree:main',  # Assuming main() is your entry function
         ],
     },
 )
