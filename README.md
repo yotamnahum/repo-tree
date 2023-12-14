@@ -1,6 +1,5 @@
 ![repo-tree Logo](images/logo.png)
 # repo-tree
-
 ## Description
 
 `repo-tree` is a python package for displaying a repository's tree structure. It offers a pythonic alternative to the Linux `tree` command, with the capability to exclude files or directories as specified in `.gitignore`.

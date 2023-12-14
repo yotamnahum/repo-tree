@@ -170,6 +170,23 @@ class RepositoryTree:
         return "".join(reversed(parts))
 
     @staticmethod
+    def get_absolute_path(path: Optional[str] = None) -> str:
+        """
+        Get the absolute path of a given directory or the current working directory.
+        Args:
+            path (Optional[str]): The directory path. If None, the current working directory is used.
+        Returns:
+            str: The absolute path of the directory.
+        """
+        path = path or os.getcwd()
+        if path[0].isalnum():
+            path = '/' + path.lstrip('/')
+        absolute_path = os.path.abspath(path)
+        if not os.path.exists(absolute_path):
+            raise Exception("Path does not exist! Enter `None` to use current working directory.")
+        return absolute_path
+
+    @staticmethod
     def display_tree(
         dir_path: str = "",
         max_depth: int = float("inf"),
@@ -190,7 +207,7 @@ class RepositoryTree:
         Returns:
             Optional[str]: The repository tree as a string if return_string is True.
         """
-        path = Path(dir_path) if dir_path else Path.cwd()
+        path = Path(RepositoryTree.get_absolute_path(dir_path))
 
         tree = RepositoryTree.build_tree(
             path,
