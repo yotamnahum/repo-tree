@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 
 setup(
-    name='repo-tree',
+    name='repo_tree',
     version='0.1.0',
     author='Yotam Nahum',
     author_email='yotam@samplead.co',
