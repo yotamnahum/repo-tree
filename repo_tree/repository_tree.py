@@ -1,9 +1,25 @@
+"""
+Repository Tree
+==============
+This module provides the RepositoryTree class for representing and displaying
+the tree structure of a repository, similar to the Linux 'tree' command.
+
+Features:
+- Display repository tree structure with customizable depth and formatting
+- Exclude files and directories based on patterns or .gitignore
+- Control visibility of hidden files
+- Specify custom exclusion patterns
+
+Author: Yotam Nahum
+License: Apache License 2.0
+"""
+
+import fnmatch
 import os
 import stat
-import fnmatch
-import argparse
 from pathlib import Path
-from typing import Generator, Optional, List
+from typing import Generator, List, Optional, Union
+
 
 class RepositoryTree:
     """
@@ -15,6 +31,7 @@ class RepositoryTree:
         is_last (bool): Flag to indicate if the node is the last in its level.
         depth (int): Depth level of the node in the repository tree.
     """
+
     _DISPLAY_PREFIX_MIDDLE = "├──"
     _DISPLAY_PREFIX_LAST = "└──"
     _PARENT_PREFIX_MIDDLE = "    "
@@ -60,11 +77,32 @@ class RepositoryTree:
         if gitignore_file.is_file():
             with gitignore_file.open("r") as file:
                 ignore_patterns = [
-                    line.strip()
-                    for line in file
-                    if line.strip() and not line.startswith("#")
+                    line.strip() for line in file if line.strip() and not line.startswith("#")
                 ]
         return ignore_patterns
+
+    @classmethod
+    def _gather_exclusion_patterns(
+        cls,
+        root: Path,
+        exclusion_patterns: Optional[List[str]] = None,
+        exclude_if_contains: Optional[Union[str, List[str]]] = None,
+    ) -> List[str]:
+        """
+        Gather all exclusion patterns from various sources.
+
+        Args:
+            root (Path): The root path of the repository tree.
+            exclusion_patterns (List[str], optional): Patterns to exclude from the tree.
+            exclude_if_contains (Union[str, List[str]], optional): Exclude files and directories whose names contain the specified string(s).
+
+        Returns:
+            List[str]: The final list of exclusion patterns.
+        """
+        all_exclusion_patterns = cls._read_gitignore_patterns(root)
+        all_exclusion_patterns.extend(exclusion_patterns or [])
+        all_exclusion_patterns.extend(cls.string_matching_pattern(exclude_if_contains or []))
+        return all_exclusion_patterns
 
     @classmethod
     def build_tree(
@@ -97,9 +135,6 @@ class RepositoryTree:
         if not show_hidden:
             children = [child for child in children if not cls._is_hidden_file(child)]
 
-        ignore_patterns = cls._read_gitignore_patterns(root)
-        exclusion_patterns = exclusion_patterns or []
-        exclusion_patterns.extend(ignore_patterns)
         children = [
             child
             for child in children
@@ -137,9 +172,7 @@ class RepositoryTree:
         try:
             return os.stat(
                 path
-            ).st_file_attributes & stat.FILE_ATTRIBUTE_HIDDEN or path.stem.startswith(
-                "."
-            )
+            ).st_file_attributes & stat.FILE_ATTRIBUTE_HIDDEN or path.stem.startswith(".")
         except AttributeError:
             return path.stem.startswith(".")
 
@@ -153,18 +186,12 @@ class RepositoryTree:
         if not self.parent:
             return self.display_name
 
-        prefix = (
-            self._DISPLAY_PREFIX_LAST if self.is_last else self._DISPLAY_PREFIX_MIDDLE
-        )
+        prefix = self._DISPLAY_PREFIX_LAST if self.is_last else self._DISPLAY_PREFIX_MIDDLE
         parts = [f"{prefix} {self.display_name}"]
         parent = self.parent
 
         while parent and parent.parent:
-            parts.append(
-                self._PARENT_PREFIX_MIDDLE
-                if parent.is_last
-                else self._PARENT_PREFIX_LAST
-            )
+            parts.append(self._PARENT_PREFIX_MIDDLE if parent.is_last else self._PARENT_PREFIX_LAST)
             parent = parent.parent
 
         return "".join(reversed(parts))
@@ -180,11 +207,17 @@ class RepositoryTree:
         """
         path = path or os.getcwd()
         if path[0].isalnum():
-            path = '/' + path.lstrip('/')
+            path = "/" + path.lstrip("/")
         absolute_path = os.path.abspath(path)
         if not os.path.exists(absolute_path):
             raise Exception("Path does not exist! Enter `None` to use current working directory.")
         return absolute_path
+
+    @staticmethod
+    def string_matching_pattern(strings: Union[str, List[str]]) -> List[str]:
+        if isinstance(strings, str):
+            strings = [strings]
+        return [f"*{string}*" for string in strings]
 
     @staticmethod
     def display_tree(
@@ -192,6 +225,7 @@ class RepositoryTree:
         max_depth: int = float("inf"),
         show_hidden: bool = False,
         exclusion_patterns: Optional[List[str]] = None,
+        exclude_if_contains: Optional[Union[str, List[str]]] = None,
         return_string: bool = True,
     ) -> Optional[str]:
         """
@@ -202,6 +236,7 @@ class RepositoryTree:
             max_depth (int): Maximum depth of the tree to display.
             show_hidden (bool): Flag to show or hide hidden files.
             exclusion_patterns (List[str], optional): Patterns to exclude from the tree.
+            exclude_if_contains (Union[str, List[str]], optional): Exclude files and directories whose names contain the specified string(s).
             return_string (bool): Flag to return the tree as a string or print it.
 
         Returns:
@@ -209,11 +244,15 @@ class RepositoryTree:
         """
         path = Path(RepositoryTree.get_absolute_path(dir_path))
 
+        all_exclusion_patterns = RepositoryTree._gather_exclusion_patterns(
+            path, exclusion_patterns, exclude_if_contains
+        )
+
         tree = RepositoryTree.build_tree(
             path,
             max_depth=max_depth,
             show_hidden=show_hidden,
-            exclusion_patterns=exclusion_patterns,
+            exclusion_patterns=all_exclusion_patterns,
         )
 
         output = "\n".join(node.display_path() for node in tree)
@@ -223,22 +262,18 @@ class RepositoryTree:
         else:
             print(output)
 
-def main():
-    parser = argparse.ArgumentParser(description='Display a directory tree structure.')
-    parser.add_argument('dir_path', type=str, nargs='?', default='', help='The root directory path')
-    parser.add_argument('--max_depth', type=int, default=float('inf'), help='Maximum depth of the tree to display')
-    parser.add_argument('--show_hidden', action='store_true', help='Flag to show hidden files')
-    parser.add_argument('--exclusion_patterns', type=str, nargs='*', help='Patterns to exclude from the tree')
-    args = parser.parse_args()
 
+def test():
     tree = RepositoryTree.display_tree(
-        dir_path=args.dir_path,
-        max_depth=args.max_depth,
-        show_hidden=args.show_hidden,
-        exclusion_patterns=args.exclusion_patterns,
-        return_string=True
+        dir_path=".",
+        max_depth=2,
+        show_hidden=False,
+        exclusion_patterns=["*.pyc"],
+        exclude_if_contains=["__", ".git"],
+        return_string=True,
     )
     print(tree)
 
+
 if __name__ == "__main__":
-    main()
+    test()
