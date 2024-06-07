@@ -18,7 +18,7 @@ import fnmatch
 import os
 import stat
 from pathlib import Path
-from typing import Generator, List, Optional, Union
+from typing import Generator, List, Optional, Union, Tuple
 
 
 class RepositoryTree:
@@ -57,9 +57,32 @@ class RepositoryTree:
         self.depth: int = self.parent.depth + 1 if self.parent else 0
 
     @property
-    def display_name(self) -> str:
+    def get_display_name(self) -> str:
         """Generate a display name for the repository tree node."""
         return f"{self.path.name}/" if self.path.is_dir() else self.path.name
+
+    @staticmethod
+    def get_absolute_path(path: Optional[str] = None) -> str:
+        """
+        Get the absolute path of a given directory or the current working directory.
+        Args:
+            path (Optional[str]): The directory path. If None, the current working directory is used.
+        Returns:
+            str: The absolute path of the directory.
+        """
+        path = path or os.getcwd()
+        if path[0].isalnum():
+            path = "/" + path.lstrip("/")
+        absolute_path = os.path.abspath(path)
+        if not os.path.exists(absolute_path):
+            raise Exception("Path does not exist! Enter `None` to use current working directory.")
+        return absolute_path
+
+    @staticmethod
+    def string_matching_pattern(strings: Union[str, List[str]]) -> List[str]:
+        if isinstance(strings, str):
+            strings = [strings]
+        return [f"*{string}*" for string in strings]
 
     @classmethod
     def _read_gitignore_patterns(cls, root: Path) -> List[str]:
@@ -104,6 +127,28 @@ class RepositoryTree:
         all_exclusion_patterns.extend(cls.string_matching_pattern(exclude_if_contains or []))
         return all_exclusion_patterns
 
+    @staticmethod
+    def _is_hidden_file(path: Path) -> bool:
+        """
+        Check if a file is hidden.
+
+        Args:
+            path (Path): The path of the file to check.
+
+        Returns:
+            bool: True if the file is hidden, False otherwise.
+        """
+        try:
+            return os.stat(
+                path
+            ).st_file_attributes & stat.FILE_ATTRIBUTE_HIDDEN or path.stem.startswith(".")
+        except AttributeError:
+            return path.stem.startswith(".")
+
+    @staticmethod
+    def _dirs_first(path: Path) -> Tuple[bool, str]:
+        return (not path.is_dir(), str(path).lower())
+
     @classmethod
     def build_tree(
         cls,
@@ -131,7 +176,7 @@ class RepositoryTree:
         root_node = cls(path=root, parent=parent, is_last=is_last)
         yield root_node
 
-        children = sorted(root.iterdir(), key=lambda s: str(s).lower())
+        children = sorted(root.iterdir(), key=cls._dirs_first)
         if not show_hidden:
             children = [child for child in children if not cls._is_hidden_file(child)]
 
@@ -158,24 +203,6 @@ class RepositoryTree:
             else:
                 yield cls(child, root_node, is_last_child)
 
-    @staticmethod
-    def _is_hidden_file(path: Path) -> bool:
-        """
-        Check if a file is hidden.
-
-        Args:
-            path (Path): The path of the file to check.
-
-        Returns:
-            bool: True if the file is hidden, False otherwise.
-        """
-        try:
-            return os.stat(
-                path
-            ).st_file_attributes & stat.FILE_ATTRIBUTE_HIDDEN or path.stem.startswith(".")
-        except AttributeError:
-            return path.stem.startswith(".")
-
     def display_path(self) -> str:
         """
         Generate the display string for the repository tree path.
@@ -184,10 +211,10 @@ class RepositoryTree:
             str: The formatted path string for display.
         """
         if not self.parent:
-            return self.display_name
+            return self.get_display_name
 
         prefix = self._DISPLAY_PREFIX_LAST if self.is_last else self._DISPLAY_PREFIX_MIDDLE
-        parts = [f"{prefix} {self.display_name}"]
+        parts = [f"{prefix} {self.get_display_name}"]
         parent = self.parent
 
         while parent and parent.parent:
@@ -195,29 +222,6 @@ class RepositoryTree:
             parent = parent.parent
 
         return "".join(reversed(parts))
-
-    @staticmethod
-    def get_absolute_path(path: Optional[str] = None) -> str:
-        """
-        Get the absolute path of a given directory or the current working directory.
-        Args:
-            path (Optional[str]): The directory path. If None, the current working directory is used.
-        Returns:
-            str: The absolute path of the directory.
-        """
-        path = path or os.getcwd()
-        if path[0].isalnum():
-            path = "/" + path.lstrip("/")
-        absolute_path = os.path.abspath(path)
-        if not os.path.exists(absolute_path):
-            raise Exception("Path does not exist! Enter `None` to use current working directory.")
-        return absolute_path
-
-    @staticmethod
-    def string_matching_pattern(strings: Union[str, List[str]]) -> List[str]:
-        if isinstance(strings, str):
-            strings = [strings]
-        return [f"*{string}*" for string in strings]
 
     @staticmethod
     def display_tree(
@@ -254,7 +258,6 @@ class RepositoryTree:
             show_hidden=show_hidden,
             exclusion_patterns=all_exclusion_patterns,
         )
-
         output = "\n".join(node.display_path() for node in tree)
 
         if return_string:
@@ -266,10 +269,9 @@ class RepositoryTree:
 def test():
     tree = RepositoryTree.display_tree(
         dir_path=".",
-        max_depth=2,
         show_hidden=False,
         exclusion_patterns=["*.pyc"],
-        exclude_if_contains=["__", ".git"],
+        exclude_if_contains=[".git"],
         return_string=True,
     )
     print(tree)

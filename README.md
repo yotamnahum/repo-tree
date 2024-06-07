@@ -124,6 +124,3 @@ The `display_tree` method accepts the following parameters:
 
 This project is licensed under the Apache License - see the [LICENSE](LICENSE) file for details.
 
-## TODO
-
-- [ ] Add a `print_repo` method that prints all the files in the repository
