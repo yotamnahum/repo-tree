@@ -359,46 +359,6 @@ class RepositoryTree:
 
         return file_paths
 
-    @staticmethod
-    def get_concatenated_file_contents(
-        dir_path: str = "",
-        max_depth: int = float("inf"),
-        show_hidden: bool = False,
-        exclusion_patterns: Optional[List[str]] = ["*TODO.md", "*.gitignore", "*setup.py"],
-        exclude_if_contains: Optional[Union[str, List[str]]] = None,
-        inclusion_patterns: Optional[List[str]] = ["*.py", "*.md"],
-    ) -> str:
-        """
-        Generate and return a concatenated view of all the file contents in the directory tree.
-
-        Args:
-            dir_path (str): The root repository path for the tree.
-            max_depth (int): Maximum depth of the tree to display.
-            show_hidden (bool): Flag to show or hide hidden files.
-            exclusion_patterns (List[str], optional): Patterns to exclude from the tree. Default is ['*TODO.md', '*.gitignore', '*setup.py'].
-            exclude_if_contains (Union[str, List[str]], optional): Exclude files and directories whose names contain the specified string(s).
-            inclusion_patterns (List[str], optional): Patterns to include in the concatenated file contents. Default is ['*.py', '*.md'].
-        Returns:
-            str: The concatenated file contents.
-        """
-        path = TreeGenerator.get_absolute_path(dir_path)
-
-        tree = TreeGenerator.build_tree(
-            dir_path, max_depth, show_hidden, exclusion_patterns, exclude_if_contains
-        )
-
-        if inclusion_patterns:
-            tree = RepositoryTree.filter_included_patterns(tree, inclusion_patterns)
-
-        tree_str = "\n".join(RepositoryTree.display_tree_path(node) for node in tree)
-        file_paths = [str(node.path.relative_to(path)) for node in tree if node.path.is_file()]
-
-        file_contents = []
-        for file_path in file_paths:
-            with open(path / file_path, "r", errors="ignore") as file:
-                contents = file.read()
-                file_contents.append(f"# {file_path}\n```\n{contents}\n```\n")
-
 
 class CodeBlock:
     def __init__(self, path: str, contents: str) -> None:
