@@ -16,12 +16,17 @@ License: Apache License 2.0
 
 import fnmatch
 import os
+import re
 import stat
+import tempfile
 from pathlib import Path
 from typing import Generator, List, Optional, Tuple, Union
 
+from git import Repo
 
-class TreeGenerator:
+
+class RepositoryPathHandler:
+
     @staticmethod
     def get_absolute_path(path: Optional[str] = None) -> Path:
         """
@@ -38,6 +43,61 @@ class TreeGenerator:
         if not os.path.exists(absolute_path):
             raise Exception("Path does not exist! Enter `None` to use current working directory.")
         return Path(absolute_path)
+
+    @staticmethod
+    def is_github_url(url_or_path: str) -> bool:
+        """
+        A simple function to check if a given URL or path is a GitHub URL.
+        Examples of valid GitHub URLs:
+            - https://github.com/user/repo/tree/main/directory
+            - https://github.com/user/repo
+            - git@github.com:user/repo.git
+        """
+        return bool(re.match(r"^(https://github\.com/|git@github\.com:)", url_or_path))
+
+    @staticmethod
+    def parse_github_url(url: str) -> Tuple[str, Optional[str]]:
+        match = re.match(r"^(https://github\.com/[^/]+/[^/]+)(?:/tree/[^/]+/(.+))?$", url)
+        if match:
+            repo_url = match.group(1)
+            subdirectory = match.group(2)
+            return repo_url, subdirectory
+        else:
+            raise ValueError(f"Invalid GitHub URL format. URL: {url}")
+
+    @staticmethod
+    def clone_github_repo(
+        url: str, subdirectory: Optional[str] = None
+    ) -> Tuple[tempfile.TemporaryDirectory, Optional[str]]:
+        temp_dir = tempfile.TemporaryDirectory()
+        print(f"temp_dir: {temp_dir.name}")
+        repo = Repo.clone_from(url, temp_dir.name)
+
+        if subdirectory:
+            subdir_path = Path(temp_dir.name) / subdirectory
+            if subdir_path.exists() and subdir_path.is_dir():
+                return temp_dir, str(subdir_path)
+            else:
+                raise ValueError(f"Subdirectory '{subdirectory}' does not exist in the repository.")
+
+        return temp_dir, None
+
+    @classmethod
+    def get_repository_path(
+        cls, url_or_path: str
+    ) -> Tuple[Path, Optional[tempfile.TemporaryDirectory]]:
+        if cls.is_github_url(url_or_path):
+            print("Cloning repository...")
+            url, subdirectory = cls.parse_github_url(url_or_path)
+            temp_dir, subdir_path = cls.clone_github_repo(url, subdirectory)
+            print(subdir_path or temp_dir.name)
+            print(temp_dir)
+            return Path(subdir_path or temp_dir.name), temp_dir
+        else:
+            return cls.get_absolute_path(url_or_path), None
+
+
+class TreeGenerator:
 
     @staticmethod
     def string_matching_pattern(strings: Union[str, List[str]]) -> List[str]:
@@ -186,7 +246,8 @@ class TreeGenerator:
         Returns:
             List[TreeNode]: The list of repository tree nodes.
         """
-        path = cls.get_absolute_path(dir_path)
+        #path = RepositoryPathHandler.get_absolute_path(dir_path)
+        path = dir_path
 
         all_exclusion_patterns = cls._gather_exclusion_patterns(
             path, exclusion_patterns, exclude_if_contains
@@ -315,11 +376,13 @@ class RepositoryTree:
             ├── README.md
             └── setup.py
         """
+        dir_path, temp_dir = RepositoryPathHandler.get_repository_path(dir_path)
         tree = TreeGenerator.build_tree(
             dir_path, max_depth, show_hidden, exclusion_patterns, exclude_if_contains
         )
         tree_str = "\n".join(RepositoryTree.display_tree_path(node) for node in tree)
-
+        if temp_dir:
+            temp_dir.cleanup()
         if print_tree:
             print(tree_str)
         return tree_str
@@ -349,14 +412,15 @@ class RepositoryTree:
             >>> RepositoryTree.get_tree_paths()
             ['images/logo.png', 'repo_tree/__init__.py', 'repo_tree/repository_tree.py', 'README.md', 'setup.py']
         """
-        path = TreeGenerator.get_absolute_path(dir_path)
+        dir_path, temp_dir = RepositoryPathHandler.get_repository_path(dir_path)
 
         tree = TreeGenerator.build_tree(
             dir_path, max_depth, show_hidden, exclusion_patterns, exclude_if_contains
         )
 
-        file_paths = [str(node.path.relative_to(path)) for node in tree if node.path.is_file()]
-
+        file_paths = [str(node.path.relative_to(dir_path)) for node in tree if node.path.is_file()]
+        if temp_dir:
+            temp_dir.cleanup()
         return file_paths
 
 
@@ -415,7 +479,7 @@ Below are the contents of all the files in the repository, separated by '###':
         Returns:
             str: The concatenated file contents.
         """
-        path = TreeGenerator.get_absolute_path(dir_path)
+        dir_path, temp_dir = RepositoryPathHandler.get_repository_path(dir_path)
 
         tree = TreeGenerator.build_tree(
             dir_path, max_depth, show_hidden, exclusion_patterns, exclude_if_contains
@@ -425,12 +489,14 @@ Below are the contents of all the files in the repository, separated by '###':
             tree = RepositoryTree.filter_included_patterns(tree, inclusion_patterns)
 
         tree_str = "\n".join(RepositoryTree.display_tree_path(node) for node in tree)
-        file_paths = [str(node.path.relative_to(path)) for node in tree if node.path.is_file()]
+        file_paths = [str(node.path.relative_to(dir_path)) for node in tree if node.path.is_file()]
 
-        code_blocks = [FlatView.read_file(file_path, path) for file_path in file_paths]
+        code_blocks = [FlatView.read_file(file_path, dir_path) for file_path in file_paths]
         formatted_code_blocks = [FlatView.block_formatter(block) for block in code_blocks]
-
+        if temp_dir:
+            temp_dir.cleanup()
         return FlatView.format_flat_view(tree_str, formatted_code_blocks)
+
 
 def test():
     # tree = RepositoryTree.display_tree(
@@ -445,7 +511,7 @@ def test():
     # )
     # print(tree_paths)
 
-    concatenated_contents = FlatView.get_concatenated_file_contents()
+    concatenated_contents = FlatView.get_concatenated_file_contents('https://github.com/mpoon/gpt-repository-loader/tree/main/test_data')
     print(concatenated_contents)
 
 

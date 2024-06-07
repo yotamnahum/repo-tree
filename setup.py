@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='repo-tree',
-    version='0.1.0',
+    version='0.1.1',
     author='Yotam Nahum',
     author_email='yotam@samplead.co',
     description='A simple python package to display a repository tree structure. '
