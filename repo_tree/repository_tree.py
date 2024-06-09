@@ -70,31 +70,60 @@ class RepositoryPathHandler:
         url: str, subdirectory: Optional[str] = None
     ) -> Tuple[tempfile.TemporaryDirectory, Optional[str]]:
         temp_dir = tempfile.TemporaryDirectory()
-        print(f"temp_dir: {temp_dir.name}")
-        repo = Repo.clone_from(url, temp_dir.name)
+        repo_name = Path(url).stem
+        repo_path = Path(temp_dir.name) / repo_name
+
+        Repo.clone_from(url, repo_path)
 
         if subdirectory:
-            subdir_path = Path(temp_dir.name) / subdirectory
+            subdir_path = repo_path / subdirectory
             if subdir_path.exists() and subdir_path.is_dir():
                 return temp_dir, str(subdir_path)
             else:
                 raise ValueError(f"Subdirectory '{subdirectory}' does not exist in the repository.")
 
-        return temp_dir, None
+        return temp_dir, str(repo_path)
 
     @classmethod
     def get_repository_path(
         cls, url_or_path: str
     ) -> Tuple[Path, Optional[tempfile.TemporaryDirectory]]:
         if cls.is_github_url(url_or_path):
-            print("Cloning repository...")
             url, subdirectory = cls.parse_github_url(url_or_path)
             temp_dir, subdir_path = cls.clone_github_repo(url, subdirectory)
-            print(subdir_path or temp_dir.name)
-            print(temp_dir)
-            return Path(subdir_path or temp_dir.name), temp_dir
+            return Path(subdir_path), temp_dir
         else:
             return cls.get_absolute_path(url_or_path), None
+
+class TreeNode:
+    _DISPLAY_PREFIX_MIDDLE = "├──"
+    _DISPLAY_PREFIX_LAST = "└──"
+    _PARENT_PREFIX_MIDDLE = "    "
+    _PARENT_PREFIX_LAST = "│   "
+
+    def __init__(
+        self,
+        path: Path,
+        parent: Optional["TreeNode"] = None,
+        is_last: bool = False,
+    ) -> None:
+        """
+        Initialize a TreeNode object.
+
+        Args:
+            path (Path): The file system path for this node.
+            parent (TreeNode, optional): The parent node in the repository tree.
+            is_last (bool): Indicates if this node is the last sibling.
+        """
+        self.path: Path = Path(path)
+        self.parent: Optional["TreeNode"] = parent
+        self.is_last: bool = is_last
+        self.depth: int = self.parent.depth + 1 if self.parent else 0
+
+    @property
+    def get_display_name(self) -> str:
+        """Generate a display name for the repository tree node."""
+        return f"{self.path.name}/" if self.path.is_dir() else self.path.name
 
 
 class TreeGenerator:
@@ -174,12 +203,12 @@ class TreeGenerator:
     def generate_tree(
         cls,
         root: Path,
-        parent: Optional["TreeNode"] = None,
+        parent: Optional[TreeNode] = None,
         is_last: bool = False,
         max_depth: int = float("inf"),
         show_hidden: bool = False,
         exclusion_patterns: Optional[List[str]] = None,
-    ) -> Generator["TreeNode", None, None]:
+    ) -> Generator[TreeNode, None, None]:
         """
         Build and yield nodes of the repository tree.
 
@@ -232,7 +261,7 @@ class TreeGenerator:
         show_hidden: bool = False,
         exclusion_patterns: Optional[List[str]] = None,
         exclude_if_contains: Optional[Union[str, List[str]]] = None,
-    ) -> List["TreeNode"]:
+    ) -> List[TreeNode]:
         """
         Build the repository tree structure.
 
@@ -246,15 +275,13 @@ class TreeGenerator:
         Returns:
             List[TreeNode]: The list of repository tree nodes.
         """
-        #path = RepositoryPathHandler.get_absolute_path(dir_path)
-        path = dir_path
 
         all_exclusion_patterns = cls._gather_exclusion_patterns(
-            path, exclusion_patterns, exclude_if_contains
+            dir_path, exclusion_patterns, exclude_if_contains
         )
 
         tree = cls.generate_tree(
-            path,
+            dir_path,
             max_depth=max_depth,
             show_hidden=show_hidden,
             exclusion_patterns=all_exclusion_patterns,
@@ -262,36 +289,6 @@ class TreeGenerator:
 
         return [node for node in tree]
 
-
-class TreeNode:
-    _DISPLAY_PREFIX_MIDDLE = "├──"
-    _DISPLAY_PREFIX_LAST = "└──"
-    _PARENT_PREFIX_MIDDLE = "    "
-    _PARENT_PREFIX_LAST = "│   "
-
-    def __init__(
-        self,
-        path: Path,
-        parent: Optional["TreeNode"] = None,
-        is_last: bool = False,
-    ) -> None:
-        """
-        Initialize a TreeNode object.
-
-        Args:
-            path (Path): The file system path for this node.
-            parent (TreeNode, optional): The parent node in the repository tree.
-            is_last (bool): Indicates if this node is the last sibling.
-        """
-        self.path: Path = Path(path)
-        self.parent: Optional["TreeNode"] = parent
-        self.is_last: bool = is_last
-        self.depth: int = self.parent.depth + 1 if self.parent else 0
-
-    @property
-    def get_display_name(self) -> str:
-        """Generate a display name for the repository tree node."""
-        return f"{self.path.name}/" if self.path.is_dir() else self.path.name
 
 
 class RepositoryTree:
@@ -344,7 +341,7 @@ class RepositoryTree:
 
     @staticmethod
     def display_tree(
-        dir_path: str = "",
+        url_or_path: str = "",
         max_depth: int = float("inf"),
         show_hidden: bool = False,
         exclusion_patterns: Optional[List[str]] = None,
@@ -355,7 +352,7 @@ class RepositoryTree:
         Generate and display the directory tree.
 
         Args:
-            dir_path (str): The root repository path for the tree.
+            url_or_path (str): The URL or path of the repository.
             max_depth (int): Maximum depth of the tree to display.
             show_hidden (bool): Flag to show or hide hidden files.
             exclusion_patterns (List[str], optional): Patterns to exclude from the tree.
@@ -376,7 +373,7 @@ class RepositoryTree:
             ├── README.md
             └── setup.py
         """
-        dir_path, temp_dir = RepositoryPathHandler.get_repository_path(dir_path)
+        dir_path, temp_dir = RepositoryPathHandler.get_repository_path(url_or_path)
         tree = TreeGenerator.build_tree(
             dir_path, max_depth, show_hidden, exclusion_patterns, exclude_if_contains
         )
@@ -389,7 +386,7 @@ class RepositoryTree:
 
     @staticmethod
     def get_tree_paths(
-        dir_path: str = "",
+        url_or_path: str = "",
         max_depth: int = float("inf"),
         show_hidden: bool = False,
         exclusion_patterns: Optional[List[str]] = None,
@@ -399,7 +396,7 @@ class RepositoryTree:
         Generate and return a list of file paths in the directory tree.
 
         Args:
-            dir_path (str): The root repository path for the tree.
+            url_or_path (str): The URL or path of the repository.
             max_depth (int): Maximum depth of the tree to display.
             show_hidden (bool): Flag to show or hide hidden files.
             exclusion_patterns (List[str], optional): Patterns to exclude from the tree.
@@ -412,7 +409,7 @@ class RepositoryTree:
             >>> RepositoryTree.get_tree_paths()
             ['images/logo.png', 'repo_tree/__init__.py', 'repo_tree/repository_tree.py', 'README.md', 'setup.py']
         """
-        dir_path, temp_dir = RepositoryPathHandler.get_repository_path(dir_path)
+        dir_path, temp_dir = RepositoryPathHandler.get_repository_path(url_or_path)
 
         tree = TreeGenerator.build_tree(
             dir_path, max_depth, show_hidden, exclusion_patterns, exclude_if_contains
@@ -443,23 +440,22 @@ class FlatView:
 
     @staticmethod
     def format_flat_view(tree_str: str, formatted_code_blocks: List[str]) -> str:
-        all_code_blocks = "\n###\n".join(formatted_code_blocks)
+        all_code_blocks = "\n---\n".join(formatted_code_blocks)
 
         template = f"""
-Below is a flattened view of the repository. Here is the repository tree structure:
-    
+The document below contains all the files in the codebase. For your convenience, this is the structure of the codebase:
 ```
 {tree_str}
 ```
 
-Below are the contents of all the files in the repository, separated by '###':
+Below are the contents of all the files in the codebase, separated by '---'.
 {all_code_blocks}
 """
         return template
 
     @staticmethod
     def get_concatenated_file_contents(
-        dir_path: str = "",
+        url_or_path: str = "",
         max_depth: int = float("inf"),
         show_hidden: bool = False,
         exclusion_patterns: Optional[List[str]] = ["*TODO.md", "*.gitignore", "*setup.py"],
@@ -470,7 +466,7 @@ Below are the contents of all the files in the repository, separated by '###':
         Generate and return a concatenated view of all the file contents in the directory tree.
 
         Args:
-            dir_path (str): The root repository path for the tree.
+            url_or_path (str): The URL or path of the repository.
             max_depth (int): Maximum depth of the tree to display.
             show_hidden (bool): Flag to show or hide hidden files.
             exclusion_patterns (List[str], optional): Patterns to exclude from the tree. Default is ['*TODO.md', '*.gitignore', '*setup.py'].
@@ -479,7 +475,7 @@ Below are the contents of all the files in the repository, separated by '###':
         Returns:
             str: The concatenated file contents.
         """
-        dir_path, temp_dir = RepositoryPathHandler.get_repository_path(dir_path)
+        dir_path, temp_dir = RepositoryPathHandler.get_repository_path(url_or_path)
 
         tree = TreeGenerator.build_tree(
             dir_path, max_depth, show_hidden, exclusion_patterns, exclude_if_contains
@@ -499,20 +495,13 @@ Below are the contents of all the files in the repository, separated by '###':
 
 
 def test():
-    # tree = RepositoryTree.display_tree(
-    #     dir_path=".",
-    #     show_hidden=False,
-    #     exclusion_patterns=["*.pyc", "TODO.md"],
-    #     exclude_if_contains=[".git"],
-    # )
-
-    # tree_paths = RepositoryTree.get_tree_paths(
-    #     exclude_if_contains=[".pycache"],
-    # )
-    # print(tree_paths)
-
-    concatenated_contents = FlatView.get_concatenated_file_contents('https://github.com/mpoon/gpt-repository-loader/tree/main/test_data')
-    print(concatenated_contents)
+    paths = [
+        "https://github.com/mpoon/gpt-repository-loader/tree/main/test_data",
+        "https://github.com/mpoon/gpt-repository-loader",
+    ]
+    for path in paths:
+        print(f"Path: {path}")
+        RepositoryTree.display_tree(path)
 
 
 if __name__ == "__main__":
