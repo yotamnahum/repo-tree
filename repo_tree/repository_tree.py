@@ -24,6 +24,8 @@ from typing import Generator, List, Optional, Tuple, Union
 
 from git import Repo
 
+from repo_tree.utils import get_markdown_language
+
 
 class RepositoryPathHandler:
 
@@ -94,6 +96,7 @@ class RepositoryPathHandler:
             return Path(subdir_path), temp_dir
         else:
             return cls.get_absolute_path(url_or_path), None
+
 
 class TreeNode:
     _DISPLAY_PREFIX_MIDDLE = "├──"
@@ -290,7 +293,6 @@ class TreeGenerator:
         return [node for node in tree]
 
 
-
 class RepositoryTree:
     @staticmethod
     def display_tree_path(node: TreeNode) -> str:
@@ -430,7 +432,8 @@ class CodeBlock:
 class FlatView:
     @staticmethod
     def block_formatter(code_block: CodeBlock) -> str:
-        return f"# {code_block.path}\n```\n{code_block.contents.strip()}\n```\n"
+        language = get_markdown_language(code_block.path)
+        return f"# {code_block.path}\n```{language}\n{code_block.contents.strip()}\n```\n"
 
     @staticmethod
     def read_file(file_path: str, path: Path) -> CodeBlock:
@@ -444,7 +447,7 @@ class FlatView:
 
         template = f"""
 The document below contains all the files in the codebase. For your convenience, this is the structure of the codebase:
-```
+```bash
 {tree_str}
 ```
 
